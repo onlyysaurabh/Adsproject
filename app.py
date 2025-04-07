@@ -236,9 +236,18 @@ def plot_data_with_indicator(hist_df, indicator_series, symbol, hist_column='Clo
     # 3. Update Layout
     fig.update_layout(
         title=f'{symbol} - Historical {hist_column} & {indicator_name}',
-        xaxis_title='Date', yaxis_title='Price', legend_title='Legend',
+        xaxis_title='Date', yaxis_title='Price', 
+        legend_title='Legend',
+        legend=dict(
+            orientation="h",  # horizontal orientation
+            yanchor="bottom",  # anchor to bottom
+            y=-0.2,  # position below the chart (-0.2 means 20% below the plot area)
+            xanchor="center",  # anchor x position to center
+            x=0.5  # center horizontally
+        ),
         xaxis_rangeslider_visible=True, # Enable rangeslider
-        height=500 # Adjust height
+        height=500, # Adjust height
+        margin=dict(b=100)  # Add bottom margin to accommodate legend
     )
     return fig
 
