@@ -237,17 +237,17 @@ def plot_data_with_indicator(hist_df, indicator_series, symbol, hist_column='Clo
     fig.update_layout(
         title=f'{symbol} - Historical {hist_column} & {indicator_name}',
         xaxis_title='Date', yaxis_title='Price', 
-        legend_title='Legend',
+        #legend_title='Legend',
         legend=dict(
             orientation="h",  # horizontal orientation
-            yanchor="bottom",  # anchor to bottom
-            y=-0.2,  # position below the chart (-0.2 means 20% below the plot area)
-            xanchor="center",  # anchor x position to center
-            x=0.5  # center horizontally
+            yanchor="top",    # anchor to top (changed from bottom)
+            y=1.1,            # position above the chart (changed from -0.3)
+            xanchor="center", # anchor x position to center
+            x=0.5            # center horizontally
         ),
         xaxis_rangeslider_visible=True, # Enable rangeslider
-        height=500, # Adjust height
-        margin=dict(b=100)  # Add bottom margin to accommodate legend
+        height=550,
+        margin=dict(t=120, b=70)  # Increased top margin, reduced bottom margin
     )
     return fig
 
@@ -387,6 +387,32 @@ if analyze_button:
         )
         if fig:
             plot_placeholder.plotly_chart(fig, use_container_width=True)
+            
+            # Display latest current and predicted values below the graph
+            latest_date = hist_data.index[-1].strftime('%Y-%m-%d')
+            latest_actual = hist_data[plot_column].iloc[-1]
+            latest_predicted = moving_avg_series.iloc[-1] if not moving_avg_series.empty else None
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                st.metric(
+                    label=f"Latest Actual Value ({latest_date})", 
+                    value=f"${latest_actual:.2f}"
+                )
+            with col2:
+                if latest_predicted is not None:
+                    # Calculate percentage difference for delta
+                    pct_diff = ((latest_predicted - latest_actual) / latest_actual) * 100
+                    st.metric(
+                        label=f"Latest Predicted Value ({latest_date})", 
+                        value=f"${latest_predicted:.2f}",
+                        delta=f"{pct_diff:.2f}%"
+                    )
+                else:
+                    st.metric(
+                        label=f"Latest Predicted Value ({latest_date})", 
+                        value="N/A"
+                    )
         else:
             plot_placeholder.error("Failed to generate plot.")
 
