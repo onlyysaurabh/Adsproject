@@ -14,7 +14,7 @@ DATA_DIR = "data"
 STOCK_LIST_FILE = "stocks.csv"
 API_SLEEP_INTERVAL = 0.5 # Seconds to wait between API calls (if needed)
 # PREDICTION_PERIODS = 90 # Number of periods (days) to forecast ahead (Commented out - MA is not a forecast)
-MOVING_AVERAGE_PERIOD = 30 # Period for the moving average calculation
+MOVING_AVERAGE_PERIOD = 5 # Period for the moving average calculation
 
 # --- Helper Functions (Data Fetching, Saving, Loading - Mostly Unchanged) ---
 
@@ -23,10 +23,10 @@ def create_dir_if_not_exists(directory):
     if not os.path.exists(directory):
         try:
             os.makedirs(directory)
-            st.sidebar.info(f"Created directory: {directory}") # More visible info
+            st.info(f"Created directory: {directory}") # More visible info
             return True
         except OSError as e:
-            st.sidebar.error(f"Error creating directory {directory}: {e}")
+            st.error(f"Error creating directory {directory}: {e}")
             return False
     return True
 
@@ -256,19 +256,19 @@ def get_stock_list(filename="all_tickers.txt"):
     """Reads stock symbols from a text file, provides defaults if file not found."""
     default_stocks = ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA', 'NVDA', 'JPM'] # Expanded default list
     if not os.path.exists(filename):
-        st.sidebar.warning(f"'{filename}' not found. Using default stock list.")
+        st.warning(f"'{filename}' not found. Using default stock list.")
         return default_stocks
     try:
         with open(filename, 'r') as f:
             symbols = [line.strip().upper() for line in f if line.strip()]
         if not symbols:
-            st.sidebar.error(f"No valid symbols found in '{filename}'.")
+            st.error(f"No valid symbols found in '{filename}'.")
             return default_stocks
         # Remove duplicates and sort
         symbols = sorted(list(set(symbols)))
         return symbols
     except Exception as e:
-        st.sidebar.error(f"Error reading '{filename}': {e}")
+        st.error(f"Error reading '{filename}': {e}")
         return default_stocks
 
 # --- Streamlit App Main Logic ---
@@ -282,70 +282,31 @@ if not FMP_API_KEY or FMP_API_KEY.startswith("Pde2") or len(FMP_API_KEY) < 10: #
     st.info("Please obtain a free API key from financialmodelingprep.com and update the `FMP_API_KEY` variable in the script.")
     st.stop()
 
+# --- Controls (Moved from sidebar to top) ---
+st.subheader("Controls")
 
-# --- Sidebar ---
-st.sidebar.header("Controls")
+# Create a layout with columns for the controls
+col1, col2, col3 = st.columns([4, 1, 1])
+
+# Get available stocks
 available_stocks = get_stock_list()
 
-# Add search functionality for stocks
-search_query = st.sidebar.text_input("Search Stock Symbol:", "")
-if search_query:
-    filtered_stocks = [stock for stock in available_stocks if search_query.upper() in stock]
-    if not filtered_stocks:
-        st.sidebar.warning(f"No stocks matching '{search_query}' found.")
-        filtered_stocks = available_stocks
-else:
-    filtered_stocks = available_stocks
+# Combined search and select functionality
+with col1:
+    selected_symbol = st.selectbox(
+        "Search/Select Stock Symbol:",
+        options=available_stocks,
+        index=available_stocks.index('AAPL') if 'AAPL' in available_stocks else 0 # Default to AAPL if exists
+    )
 
-selected_symbol = st.sidebar.selectbox(
-    "Select Stock Symbol:",
-    options=filtered_stocks,
-    index=filtered_stocks.index('AAPL') if 'AAPL' in filtered_stocks else 0 # Default to AAPL if exists
-)
+with col2:
+    analyze_button = st.button(f"Analyze {selected_symbol}", key="analyze")
 
-# --- Removed Model Training Button Logic ---
-# Check if model exists for the selected symbol
-# model_exists = os.path.exists(get_model_filepath(selected_symbol))
-# train_button_placeholder = st.sidebar.empty()
+with col3:
+    show_raw = st.checkbox("Show Raw Data", value=False)
+    show_profile = st.checkbox("Show Profile", value=True)
 
-# if not model_exists:
-#     st.sidebar.warning(f"No pre-trained ARIMA model found for {selected_symbol}.")
-#     if train_button_placeholder.button(f"Train ARIMA Model for {selected_symbol}", key=f"train_{selected_symbol}"):
-#         # --- Training Logic ---
-#         st.subheader(f"🏋️ Training Model for {selected_symbol}")
-#         hist_data = load_stock_data(selected_symbol)
-#         if hist_data is None:
-#             st.info("Historical data not found locally, fetching...")
-#             if fetch_and_store_stock_data_csv(selected_symbol):
-#                 hist_data = load_stock_data(selected_symbol)
-#             else:
-#                 st.error("Failed to fetch historical data. Cannot train model.")
-#                 st.stop()
-
-#         if hist_data is not None and 'Adjusted Close' in hist_data.columns:
-#             # Use 'Adjusted Close' for training as it accounts for splits/dividends
-#             data_to_train = hist_data['Adjusted Close'].dropna()
-#             with st.spinner("Training in progress..."):
-#                 train_success = train_and_save_arima_model(selected_symbol, data_to_train)
-#             if train_success:
-#                 # Trigger a rerun to update the sidebar (remove train button)
-#                 st.rerun()
-#             else:
-#                 st.error("Model training failed. Check errors above.")
-#         else:
-#             st.error("Could not load valid historical data ('Adjusted Close') for training.")
-# else:
-#     st.sidebar.success(f"✅ Pre-trained ARIMA model found for {selected_symbol}.")
-#     train_button_placeholder.empty() # Remove button placeholder if model exists
-
-st.sidebar.markdown("---")
-# Main action button - Updated label slightly
-analyze_button = st.sidebar.button(f"Analyze {selected_symbol}", key="analyze")
-st.sidebar.markdown("---")
-# Optional Raw Data Display
-show_raw = st.sidebar.checkbox("Show Raw Data Sample", value=False)
-show_profile = st.sidebar.checkbox("Show Stock Profile Info", value=True)
-
+st.markdown("---")
 
 # --- Main Content Area ---
 st.header(f"Analysis for: {selected_symbol}")
@@ -407,28 +368,6 @@ if analyze_button:
         else:
             profile_placeholder.warning(f"Could not retrieve profile information for {selected_symbol}.")
 
-
-    # --- Removed Model Loading & Prediction ---
-    # 3. Load Model & Generate Predictions
-    # predictions = pd.DataFrame() # Initialize empty
-    # model = load_arima_model(selected_symbol)
-    # if model:
-    #     with st.spinner(f"Generating {PREDICTION_PERIODS}-day forecast..."):
-    #         # Determine frequency and timezone from historical data
-    #         hist_freq = getattr(hist_data.index, 'freq', 'B') # Default to Business Day if no freq
-    #         if hist_freq is None: hist_freq = 'B' # Handle None case explicitly
-    #         hist_tz = hist_data.index.tz # Get timezone info
-
-    #         predictions = generate_predictions(
-    #             model,
-    #             future_periods=PREDICTION_PERIODS,
-    #             last_hist_date=hist_data.index.max(),
-    #             freq=hist_freq,
-    #             tzinfo=hist_tz
-    #         )
-    # else:
-    #     st.warning(f"No trained model loaded for {selected_symbol}. Train the model using the sidebar button to see forecasts.") # Message no longer relevant
-
     # 3. Calculate Moving Average
     plot_column = 'Adjusted Close' if 'Adjusted Close' in hist_data.columns else 'Close'
     if plot_column not in hist_data.columns:
@@ -465,4 +404,4 @@ if analyze_button:
 
 # Initial message if button hasn't been clicked
 if not analyze_button:
-     plot_placeholder.info(f"Click 'Analyze {selected_symbol}' in the sidebar to load data and view the moving average.")
+     plot_placeholder.info(f"Click 'Analyze {selected_symbol}' to load data and view the moving average.")
