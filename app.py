@@ -265,7 +265,7 @@ def get_stock_list(filename="all_tickers.txt"):
 # --- Streamlit App Main Logic ---
 
 st.set_page_config(layout="wide")
-st.title("📈 Stock Analysis & Moving Average") # Updated title
+st.title("Market Gaze 📈 ") # Updated title with app name
 
 # --- API Key Check ---
 if not FMP_API_KEY or FMP_API_KEY.startswith("Pde2") or len(FMP_API_KEY) < 10: # Basic checks
