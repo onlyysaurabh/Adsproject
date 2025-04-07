@@ -277,10 +277,21 @@ if not FMP_API_KEY or FMP_API_KEY.startswith("Pde2") or len(FMP_API_KEY) < 10: #
 # --- Sidebar ---
 st.sidebar.header("Controls")
 available_stocks = get_stock_list()
+
+# Add search functionality for stocks
+search_query = st.sidebar.text_input("Search Stock Symbol:", "")
+if search_query:
+    filtered_stocks = [stock for stock in available_stocks if search_query.upper() in stock]
+    if not filtered_stocks:
+        st.sidebar.warning(f"No stocks matching '{search_query}' found.")
+        filtered_stocks = available_stocks
+else:
+    filtered_stocks = available_stocks
+
 selected_symbol = st.sidebar.selectbox(
     "Select Stock Symbol:",
-    options=available_stocks,
-    index=available_stocks.index('AAPL') if 'AAPL' in available_stocks else 0 # Default to AAPL if exists
+    options=filtered_stocks,
+    index=filtered_stocks.index('AAPL') if 'AAPL' in filtered_stocks else 0 # Default to AAPL if exists
 )
 
 # --- Removed Model Training Button Logic ---
