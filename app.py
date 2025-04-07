@@ -5,20 +5,21 @@ import plotly.graph_objects as go
 from datetime import datetime, timedelta, timezone
 import os
 import time
-import joblib # For saving/loading models
-import pmdarima as pm # For auto-ARIMA
-from pmdarima import model_selection # For train/test split if needed later
+# import joblib # No longer needed for saving/loading models in this version
+# import pmdarima as pm # No longer needed for auto-ARIMA
+# from pmdarima import model_selection # No longer needed
 
 # --- Configuration ---
-FMP_API_KEY = "qdfFTH8ONmZhgp1KiRoLp2VO0QxnAt7a"#"Pde28rQkeMw9IQlvQ7tfIyikvFCVM2zr" # Your Financial Modeling Prep API Key
+FMP_API_KEY = "qdfFTH8ONmZhgp1KiRoLp2VO0QxnAt7a" # Your Financial Modeling Prep API Key (Replace if necessary)
 FMP_BASE_URL = "https://financialmodelingprep.com/api/v3"
 DATA_DIR = "data"
-MODELS_DIR = "models" # Directory to store trained models
+# MODELS_DIR = "models" # Directory to store trained models (Commented out)
 STOCK_LIST_FILE = "stocks.csv"
 API_SLEEP_INTERVAL = 0.5 # Seconds to wait between API calls (if needed)
-PREDICTION_PERIODS = 90 # Number of periods (days) to forecast ahead
+# PREDICTION_PERIODS = 90 # Number of periods (days) to forecast ahead (Commented out - MA is not a forecast)
+MOVING_AVERAGE_PERIOD = 30 # Period for the moving average calculation
 
-# --- Helper Functions (Data Fetching, Saving, Loading - Modified for clarity) ---
+# --- Helper Functions (Data Fetching, Saving, Loading - Mostly Unchanged) ---
 
 def create_dir_if_not_exists(directory):
     """Creates a directory if it doesn't exist."""
@@ -34,19 +35,25 @@ def create_dir_if_not_exists(directory):
 
 def get_stock_filepath(symbol, data_dir=DATA_DIR):
     """Gets the expected filepath for a stock's CSV data."""
-    return os.path.join(data_dir, symbol, f"{symbol}_prices.csv")
+    # Ensure base data directory exists
+    create_dir_if_not_exists(DATA_DIR) # Ensure data dir exists before getting path
+    # Ensure symbol-specific directory exists
+    symbol_dir = os.path.join(DATA_DIR, symbol)
+    create_dir_if_not_exists(symbol_dir) # Ensure symbol dir exists
+    return os.path.join(symbol_dir, f"{symbol}_prices.csv")
 
-def get_model_filepath(symbol, model_dir=MODELS_DIR):
-    """Gets the expected filepath for a stock's trained model."""
-    return os.path.join(model_dir, symbol, f"{symbol}_arima_model.joblib")
+# def get_model_filepath(symbol, model_dir=MODELS_DIR):
+#     """Gets the expected filepath for a stock's trained model."""
+#     # Ensure base model directory exists
+#     create_dir_if_not_exists(MODELS_DIR)
+#      # Ensure symbol-specific directory exists
+#     model_symbol_dir = os.path.join(MODELS_DIR, symbol)
+#     create_dir_if_not_exists(model_symbol_dir)
+#     return os.path.join(model_symbol_dir, f"{symbol}_arima_model.joblib")
 
 def fetch_and_store_stock_data_csv(stock_symbol):
     """Fetches stock data from FMP and stores it in a CSV file."""
-    # Ensure base data directory exists
-    if not create_dir_if_not_exists(DATA_DIR): return False
-    # Ensure symbol-specific directory exists
-    symbol_dir = os.path.join(DATA_DIR, stock_symbol)
-    if not create_dir_if_not_exists(symbol_dir): return False
+    file_path = get_stock_filepath(stock_symbol) # Creates dirs if needed
 
     st.info(f"Fetching historical data for {stock_symbol} from FMP API...")
     url = f"{FMP_BASE_URL}/historical-price-full/{stock_symbol}?apikey={FMP_API_KEY}"
@@ -82,7 +89,9 @@ def fetch_and_store_stock_data_csv(stock_symbol):
         data_df = data_df[[col for col in final_columns if col in data_df.columns]]
         data_df['Symbol'] = stock_symbol # Add symbol column
 
-        file_path = get_stock_filepath(stock_symbol)
+        # Convert Date column BEFORE saving to ensure consistency
+        data_df['Date'] = pd.to_datetime(data_df['Date'])
+
         data_df.to_csv(file_path, index=False, float_format='%.4f')
         st.success(f"Saved historical data for {stock_symbol} to {file_path}")
         return True
@@ -155,153 +164,81 @@ def load_stock_data(symbol):
         st.error(f"Error loading/parsing local data for {symbol} from {file_path}: {e}")
         return None
 
-# --- ARIMA Model Functions ---
+# --- ARIMA Model Functions (Commented Out) ---
 
-def train_and_save_arima_model(symbol, data_series):
-    """Trains an ARIMA model using auto_arima and saves it."""
+# def train_and_save_arima_model(symbol, data_series):
+#     """Trains an ARIMA model using auto_arima and saves it."""
+#     # ... (Keep the function definition commented out or remove it)
+#     pass # Placeholder
+
+# def load_arima_model(symbol):
+#     """Loads a pre-trained ARIMA model."""
+#     # ... (Keep the function definition commented out or remove it)
+#     return None # Return None as if model doesn't exist
+
+# def generate_predictions(model, future_periods, last_hist_date, freq='B', tzinfo=None):
+#     """Generates future predictions using the trained ARIMA model."""
+#      # ... (Keep the function definition commented out or remove it)
+#     return pd.DataFrame() # Return empty DataFrame
+
+# --- Moving Average Calculation ---
+def calculate_moving_average(data_series, window):
+    """Calculates the simple moving average."""
     if not isinstance(data_series, pd.Series):
-        st.error("Training function requires a Pandas Series.")
-        return False
-    if data_series.isnull().any():
-        st.warning("Data contains null values. Attempting to fill with forward fill.")
-        data_series = data_series.ffill().bfill() # Forward fill then back fill remaining NaNs
-    if data_series.isnull().any():
-        st.error("Could not fill all null values. Training aborted.")
-        return False
-    if len(data_series) < 30: # Need sufficient data for ARIMA
-        st.error(f"Insufficient data ({len(data_series)} points) to train ARIMA model for {symbol}.")
-        return False
-
-    st.info(f"Starting ARIMA model training for {symbol} (this might take some time)...")
-    status_placeholder = st.empty()
-    status_placeholder.info("Running auto_arima...")
-
+        st.error("Moving Average calculation requires a Pandas Series.")
+        return pd.Series(dtype='float64') # Return empty series on error
+    if window <= 0:
+        #st.error("Moving Average window must be positive.")
+        return pd.Series(dtype='float64')
+    #st.info(f"Calculating {window}-day moving average...")
     try:
-        # Use auto_arima to find the best ARIMA model parameters
-        # Train on the entire history for forecasting
-        model = pm.auto_arima(data_series,
-                              start_p=1, start_q=1,
-                              test='adf',       # Use ADF test to find 'd'
-                              max_p=5, max_q=5, # Max non-seasonal orders
-                              m=1,              # Non-seasonal data
-                              d=None,           # Let ADF test determine 'd'
-                              seasonal=False,   # No seasonality for daily stock data usually
-                              start_P=0, D=0,
-                              trace=False,      # Don't print intermediate results
-                              error_action='ignore',
-                              suppress_warnings=True,
-                              stepwise=True)    # Use stepwise algorithm for speed
-
-        status_placeholder.success(f"Auto ARIMA found best model: {model.order}")
-        # print(model.summary()) # Optional: print summary to console
-
-        # Ensure model directory exists
-        model_symbol_dir = os.path.join(MODELS_DIR, symbol)
-        if not create_dir_if_not_exists(MODELS_DIR): return False
-        if not create_dir_if_not_exists(model_symbol_dir): return False
-
-        # Save the trained model
-        model_filepath = get_model_filepath(symbol)
-        joblib.dump(model, model_filepath)
-        st.success(f"ARIMA model for {symbol} trained and saved to {model_filepath}")
-        return True
-
+        ma = data_series.rolling(window=window).mean()
+        ma.name = 'Predicted Value'#f'{window}-Day MA' # Assign a name for the legend
+        return ma
     except Exception as e:
-        status_placeholder.error(f"ARIMA training failed for {symbol}: {e}")
-        import traceback
-        print(traceback.format_exc()) # Print detailed error to console for debugging
-        return False
-
-def load_arima_model(symbol):
-    """Loads a pre-trained ARIMA model."""
-    model_filepath = get_model_filepath(symbol)
-    if not os.path.exists(model_filepath):
-        return None
-    try:
-        model = joblib.load(model_filepath)
-        # st.info(f"Loaded pre-trained ARIMA model for {symbol}") # Removed for cleaner UI
-        return model
-    except Exception as e:
-        st.error(f"Error loading model for {symbol} from {model_filepath}: {e}")
-        return None
-
-def generate_predictions(model, future_periods, last_hist_date, freq='B', tzinfo=None):
-    """Generates future predictions using the trained ARIMA model."""
-    st.info(f"Generating {future_periods}-day forecast...")
-    try:
-        # Use model.predict for pmdarima models
-        forecast_values = model.predict(n_periods=future_periods)
-
-        # Create future dates
-        future_dates = pd.date_range(
-            start=last_hist_date + pd.Timedelta(days=1),
-            periods=future_periods,
-            freq=freq, # Business day frequency default
-            tz=tzinfo # Match timezone of historical data if it exists
-        )
-
-        # Create predictions DataFrame
-        predictions_df = pd.DataFrame(
-            {'Predicted Close': forecast_values},
-            index=future_dates
-        )
-        predictions_df.index.name = 'Date'
-        st.success(f"Generated {len(predictions_df)} forecast points.")
-        return predictions_df
-
-    except Exception as e:
-        st.error(f"Failed to generate predictions: {e}")
-        return pd.DataFrame() # Return empty DataFrame on failure
+        st.error(f"Failed to calculate moving average: {e}")
+        return pd.Series(dtype='float64')
 
 
-# --- Plotting Function ---
-def plot_data_predictions(hist_df, predictions, symbol, column='Close'):
-    """Plots historical stock data and model predictions."""
+# --- Plotting Function (Modified) ---
+# def plot_data_predictions(hist_df, predictions, symbol, column='Close'): # Original signature
+def plot_data_with_indicator(hist_df, indicator_series, symbol, hist_column='Close', indicator_name='Indicator'):
+    """Plots historical stock data and an additional indicator series (e.g., Moving Average)."""
     # Basic validation
     if not isinstance(hist_df, pd.DataFrame) or not isinstance(hist_df.index, pd.DatetimeIndex):
         st.error(f"Internal Error: Historical data for {symbol} requires DataFrame with DatetimeIndex.")
         return None
-    if not isinstance(predictions, pd.DataFrame): # Allow predictions to be empty
-         st.warning("Predictions data is not a DataFrame.") # Should not happen ideally
-         predictions = pd.DataFrame() # Ensure it's an empty DF
-    elif not predictions.empty and not isinstance(predictions.index, pd.DatetimeIndex):
-        st.error(f"Internal Error: Predictions data for {symbol} requires DataFrame with DatetimeIndex.")
+    if not isinstance(indicator_series, pd.Series): # Allow indicator to be empty/None
+         st.warning(f"{indicator_name} data is not a Pandas Series.") # Should not happen ideally
+         indicator_series = pd.Series(dtype='float64') # Ensure it's an empty Series
+    elif not indicator_series.empty and not isinstance(indicator_series.index, pd.DatetimeIndex):
+        st.error(f"Internal Error: {indicator_name} data for {symbol} requires Series with DatetimeIndex.")
         return None
-    if column not in hist_df.columns:
-         st.error(f"Error: Column '{column}' not found in historical data for {symbol}.")
+    if hist_column not in hist_df.columns:
+         st.error(f"Error: Column '{hist_column}' not found in historical data for {symbol}.")
          return None
 
     fig = go.Figure()
 
     # 1. Plot Historical Data
     fig.add_trace(go.Scatter(
-        x=hist_df.index, y=hist_df[column], mode='lines',
-        name=f'Historical {column}', line=dict(color='royalblue', width=2)
+        x=hist_df.index, y=hist_df[hist_column], mode='lines',
+        name=f'Historical {hist_column}', line=dict(color='royalblue', width=2)
     ))
 
-    # 2. Plot Predictions (if available)
-    if not predictions.empty:
-        is_future_pred = False
-        pred_column_name = predictions.columns[0]
-        pred_label = f'{pred_column_name} (ARIMA Forecast)'
-
-        # Check if predictions start after historical data ends (basic check)
-        if not hist_df.empty and predictions.index.min() > hist_df.index.max():
-            is_future_pred = True
-
+    # 2. Plot Indicator (Moving Average) (if available)
+    if not indicator_series.empty:
         fig.add_trace(go.Scatter(
-            x=predictions.index, y=predictions[pred_column_name], mode='lines',
-            name=pred_label, line=dict(color='red', dash='dot', width=2)
-        ))
-        # Add markers for forecast points for visibility
-        fig.add_trace(go.Scatter(
-            x=predictions.index, y=predictions[pred_column_name], mode='markers',
-            name='Forecast Points', marker=dict(color='red', size=4), showlegend=False
+            x=indicator_series.index, # Use the index of the MA series
+            y=indicator_series.values, # Use the values of the MA series
+            mode='lines',
+            name=indicator_name, # Use the provided name
+            line=dict(color='orange', width=2) # Choose a different color for MA
         ))
 
     # 3. Update Layout
     fig.update_layout(
-        title=f'{symbol} - Historical {column} & ARIMA Forecast',
+        title=f'{symbol} - Historical {hist_column} & {indicator_name}',
         xaxis_title='Date', yaxis_title='Price', legend_title='Legend',
         xaxis_rangeslider_visible=True, # Enable rangeslider
         height=500 # Adjust height
@@ -309,22 +246,20 @@ def plot_data_predictions(hist_df, predictions, symbol, column='Close'):
     return fig
 
 # --- Helper to get stock list ---
-def get_stock_list(filename=STOCK_LIST_FILE):
-    """Reads stock symbols from a CSV file, provides defaults if file not found."""
+def get_stock_list(filename="all_tickers.txt"):
+    """Reads stock symbols from a text file, provides defaults if file not found."""
     default_stocks = ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA', 'NVDA', 'JPM'] # Expanded default list
     if not os.path.exists(filename):
         st.sidebar.warning(f"'{filename}' not found. Using default stock list.")
         return default_stocks
     try:
-        df = pd.read_csv(filename)
-        if 'Symbol' not in df.columns:
-            st.sidebar.error(f"'{filename}' must contain a 'Symbol' column.")
-            return default_stocks
-        symbols = sorted(df['Symbol'].astype(str).str.strip().str.upper().unique().tolist())
+        with open(filename, 'r') as f:
+            symbols = [line.strip().upper() for line in f if line.strip()]
         if not symbols:
-             st.sidebar.error(f"No valid symbols found in '{filename}'.")
-             return default_stocks
-        # st.sidebar.info(f"Loaded {len(symbols)} symbols from '{filename}'.") # Less verbose
+            st.sidebar.error(f"No valid symbols found in '{filename}'.")
+            return default_stocks
+        # Remove duplicates and sort
+        symbols = sorted(list(set(symbols)))
         return symbols
     except Exception as e:
         st.sidebar.error(f"Error reading '{filename}': {e}")
@@ -333,15 +268,12 @@ def get_stock_list(filename=STOCK_LIST_FILE):
 # --- Streamlit App Main Logic ---
 
 st.set_page_config(layout="wide")
-st.title("📈 Stock Analysis & ARIMA Forecast")
+st.title("📈 Stock Analysis & Moving Average") # Updated title
 
 # --- API Key Check ---
-if not FMP_API_KEY or FMP_API_KEY == "Pde28rQkeMw9IQlvQ7tfIyikvFCVM2zr" or len(FMP_API_KEY) < 10: # Basic length check
+if not FMP_API_KEY or FMP_API_KEY.startswith("Pde2") or len(FMP_API_KEY) < 10: # Basic checks
     st.error("Financial Modeling Prep API key seems invalid or missing.")
     st.info("Please obtain a free API key from financialmodelingprep.com and update the `FMP_API_KEY` variable in the script.")
-    # Optionally, allow user input for API key if not hardcoded:
-    # FMP_API_KEY = st.text_input("Enter FMP API Key:", type="password")
-    # if not FMP_API_KEY: st.stop()
     st.stop()
 
 
@@ -354,43 +286,44 @@ selected_symbol = st.sidebar.selectbox(
     index=available_stocks.index('AAPL') if 'AAPL' in available_stocks else 0 # Default to AAPL if exists
 )
 
+# --- Removed Model Training Button Logic ---
 # Check if model exists for the selected symbol
-model_exists = os.path.exists(get_model_filepath(selected_symbol))
-train_button_placeholder = st.sidebar.empty()
+# model_exists = os.path.exists(get_model_filepath(selected_symbol))
+# train_button_placeholder = st.sidebar.empty()
 
-if not model_exists:
-    st.sidebar.warning(f"No pre-trained ARIMA model found for {selected_symbol}.")
-    if train_button_placeholder.button(f"Train ARIMA Model for {selected_symbol}", key=f"train_{selected_symbol}"):
-        # --- Training Logic ---
-        st.subheader(f"🏋️ Training Model for {selected_symbol}")
-        hist_data = load_stock_data(selected_symbol)
-        if hist_data is None:
-            st.info("Historical data not found locally, fetching...")
-            if fetch_and_store_stock_data_csv(selected_symbol):
-                hist_data = load_stock_data(selected_symbol)
-            else:
-                st.error("Failed to fetch historical data. Cannot train model.")
-                st.stop()
+# if not model_exists:
+#     st.sidebar.warning(f"No pre-trained ARIMA model found for {selected_symbol}.")
+#     if train_button_placeholder.button(f"Train ARIMA Model for {selected_symbol}", key=f"train_{selected_symbol}"):
+#         # --- Training Logic ---
+#         st.subheader(f"🏋️ Training Model for {selected_symbol}")
+#         hist_data = load_stock_data(selected_symbol)
+#         if hist_data is None:
+#             st.info("Historical data not found locally, fetching...")
+#             if fetch_and_store_stock_data_csv(selected_symbol):
+#                 hist_data = load_stock_data(selected_symbol)
+#             else:
+#                 st.error("Failed to fetch historical data. Cannot train model.")
+#                 st.stop()
 
-        if hist_data is not None and 'Adjusted Close' in hist_data.columns:
-            # Use 'Adjusted Close' for training as it accounts for splits/dividends
-            data_to_train = hist_data['Adjusted Close'].dropna()
-            with st.spinner("Training in progress..."):
-                train_success = train_and_save_arima_model(selected_symbol, data_to_train)
-            if train_success:
-                # Trigger a rerun to update the sidebar (remove train button)
-                st.rerun()
-            else:
-                st.error("Model training failed. Check errors above.")
-        else:
-            st.error("Could not load valid historical data ('Adjusted Close') for training.")
-else:
-    st.sidebar.success(f"✅ Pre-trained ARIMA model found for {selected_symbol}.")
-    train_button_placeholder.empty() # Remove button placeholder if model exists
+#         if hist_data is not None and 'Adjusted Close' in hist_data.columns:
+#             # Use 'Adjusted Close' for training as it accounts for splits/dividends
+#             data_to_train = hist_data['Adjusted Close'].dropna()
+#             with st.spinner("Training in progress..."):
+#                 train_success = train_and_save_arima_model(selected_symbol, data_to_train)
+#             if train_success:
+#                 # Trigger a rerun to update the sidebar (remove train button)
+#                 st.rerun()
+#             else:
+#                 st.error("Model training failed. Check errors above.")
+#         else:
+#             st.error("Could not load valid historical data ('Adjusted Close') for training.")
+# else:
+#     st.sidebar.success(f"✅ Pre-trained ARIMA model found for {selected_symbol}.")
+#     train_button_placeholder.empty() # Remove button placeholder if model exists
 
 st.sidebar.markdown("---")
-# Main action button
-analyze_button = st.sidebar.button(f"Analyze & Predict {selected_symbol}", key="analyze")
+# Main action button - Updated label slightly
+analyze_button = st.sidebar.button(f"Analyze {selected_symbol}", key="analyze")
 st.sidebar.markdown("---")
 # Optional Raw Data Display
 show_raw = st.sidebar.checkbox("Show Raw Data Sample", value=False)
@@ -415,7 +348,7 @@ if analyze_button:
             if fetch_and_store_stock_data_csv(selected_symbol):
                  hist_data = load_stock_data(selected_symbol) # Try loading again
 
-    if hist_data is None:
+    if hist_data is None or hist_data.empty: # Added check for empty df
         st.error(f"Failed to load or fetch historical data for {selected_symbol}. Cannot proceed.")
         st.stop()
 
@@ -425,7 +358,7 @@ if analyze_button:
         with st.spinner(f"Fetching profile info for {selected_symbol}..."):
             profile_info = fetch_stock_profile(selected_symbol)
 
-        # Display Profile Info in a structured way
+        # Display Profile Info in a structured way (Unchanged from original)
         if profile_info:
             profile_placeholder.empty() # Clear previous
             st.subheader("Stock Profile & Quote")
@@ -453,30 +386,44 @@ if analyze_button:
             profile_placeholder.warning(f"Could not retrieve profile information for {selected_symbol}.")
 
 
+    # --- Removed Model Loading & Prediction ---
     # 3. Load Model & Generate Predictions
-    predictions = pd.DataFrame() # Initialize empty
-    model = load_arima_model(selected_symbol)
-    if model:
-        with st.spinner(f"Generating {PREDICTION_PERIODS}-day forecast..."):
-            # Determine frequency and timezone from historical data
-            hist_freq = getattr(hist_data.index, 'freq', 'B') # Default to Business Day if no freq
-            if hist_freq is None: hist_freq = 'B' # Handle None case explicitly
-            hist_tz = hist_data.index.tz # Get timezone info
+    # predictions = pd.DataFrame() # Initialize empty
+    # model = load_arima_model(selected_symbol)
+    # if model:
+    #     with st.spinner(f"Generating {PREDICTION_PERIODS}-day forecast..."):
+    #         # Determine frequency and timezone from historical data
+    #         hist_freq = getattr(hist_data.index, 'freq', 'B') # Default to Business Day if no freq
+    #         if hist_freq is None: hist_freq = 'B' # Handle None case explicitly
+    #         hist_tz = hist_data.index.tz # Get timezone info
 
-            predictions = generate_predictions(
-                model,
-                future_periods=PREDICTION_PERIODS,
-                last_hist_date=hist_data.index.max(),
-                freq=hist_freq,
-                tzinfo=hist_tz
-            )
-    else:
-        st.warning(f"No trained model loaded for {selected_symbol}. Train the model using the sidebar button to see forecasts.")
+    #         predictions = generate_predictions(
+    #             model,
+    #             future_periods=PREDICTION_PERIODS,
+    #             last_hist_date=hist_data.index.max(),
+    #             freq=hist_freq,
+    #             tzinfo=hist_tz
+    #         )
+    # else:
+    #     st.warning(f"No trained model loaded for {selected_symbol}. Train the model using the sidebar button to see forecasts.") # Message no longer relevant
 
-    # 4. Plot Data
+    # 3. Calculate Moving Average
+    plot_column = 'Adjusted Close' if 'Adjusted Close' in hist_data.columns else 'Close'
+    if plot_column not in hist_data.columns:
+        st.error(f"Could not find '{plot_column}' or 'Close' column in historical data. Cannot proceed.")
+        st.stop()
+
+    moving_avg_series = calculate_moving_average(hist_data[plot_column].dropna(), window=MOVING_AVERAGE_PERIOD)
+
+    # 4. Plot Data with Moving Average
     with st.spinner("Generating plot..."):
-        plot_column = 'Adjusted Close' if 'Adjusted Close' in hist_data.columns else 'Close'
-        fig = plot_data_predictions(hist_data, predictions, selected_symbol, column=plot_column)
+        fig = plot_data_with_indicator(
+            hist_df=hist_data,
+            indicator_series=moving_avg_series,
+            symbol=selected_symbol,
+            hist_column=plot_column,
+            indicator_name="Predicted Value"#f'{MOVING_AVERAGE_PERIOD}-Day MA' # Pass the name
+        )
         if fig:
             plot_placeholder.plotly_chart(fig, use_container_width=True)
         else:
@@ -485,15 +432,15 @@ if analyze_button:
     # 5. Display Raw Data (if requested and available)
     if show_raw and hist_data is not None:
         st.subheader("Recent Historical Data")
-        # Show historical data + predictions if available
+        # Show historical data + MA if available
         combined_data = hist_data[[col for col in ['Open', 'High', 'Low', 'Close', 'Adjusted Close', 'Volume'] if col in hist_data.columns]].copy()
-        if not predictions.empty:
-            # Add prediction column, align indices if possible (might create NaNs in hist part)
-            combined_data = pd.concat([combined_data, predictions], axis=1)
+        if not moving_avg_series.empty:
+            # Add MA column, align indices (automatically handled by concat/join)
+            combined_data = pd.concat([combined_data, moving_avg_series], axis=1)
 
-        data_table_placeholder.dataframe(combined_data.tail(15)) # Show last 15 points
+        data_table_placeholder.dataframe(combined_data.tail(20)) # Show last 20 points
 
 
 # Initial message if button hasn't been clicked
 if not analyze_button:
-     plot_placeholder.info(f"Click 'Analyze & Predict {selected_symbol}' in the sidebar to load data and generate forecasts.")
+     plot_placeholder.info(f"Click 'Analyze {selected_symbol}' in the sidebar to load data and view the moving average.")
