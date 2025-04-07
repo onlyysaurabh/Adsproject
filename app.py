@@ -5,9 +5,6 @@ import plotly.graph_objects as go
 from datetime import datetime, timedelta, timezone
 import os
 import time
-# import joblib # No longer needed for saving/loading models in this version
-# import pmdarima as pm # No longer needed for auto-ARIMA
-# from pmdarima import model_selection # No longer needed
 
 # --- Configuration ---
 FMP_API_KEY = "qdfFTH8ONmZhgp1KiRoLp2VO0QxnAt7a" # Your Financial Modeling Prep API Key (Replace if necessary)
@@ -339,6 +336,11 @@ plot_placeholder = st.empty()
 data_table_placeholder = st.empty()
 
 if analyze_button:
+    # Show a loading spinner and wait 10 seconds
+    with st.spinner(f"Analyzing {selected_symbol}... Please wait..."):
+        # Add a 10-second delay
+        time.sleep(10)
+        
     # 1. Fetch/Load Historical Data
     hist_data = None
     with st.spinner(f"Loading historical data for {selected_symbol}..."):
@@ -431,7 +433,7 @@ if analyze_button:
 
     # 5. Display Raw Data (if requested and available)
     if show_raw and hist_data is not None:
-        st.subheader("Recent Historical Data")
+        #st.subheader("Recent Historical Data")
         # Show historical data + MA if available
         combined_data = hist_data[[col for col in ['Open', 'High', 'Low', 'Close', 'Adjusted Close', 'Volume'] if col in hist_data.columns]].copy()
         if not moving_avg_series.empty:
